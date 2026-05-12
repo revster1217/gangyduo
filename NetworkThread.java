@@ -111,6 +111,22 @@ public class NetworkThread extends Thread {
                 }
                 break;
 
+                case "SMOKE_SYNC":
+                // Server tells us smoke status changed: SMOKE_SYNC:shipName:ON/OFF
+                if (parts.length == 3) {
+                    String shipName = parts[1];
+                    boolean isSmoked = parts[2].equals("ON");
+                    
+                    SwingUtilities.invokeLater(() -> {
+                        Ship s = sharedArena.getShipByName(shipName);
+                        if (s != null) {
+                            s.setSmoked(isSmoked);
+                            gameFrame.repaintCanvas();
+                        }
+                    });
+                }
+                break;
+
             default:
                 System.out.println("[NetworkThread] Unknown message: " + message);
                 break;

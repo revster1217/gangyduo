@@ -16,6 +16,7 @@ public class GameCanvas extends JComponent {
     // Variables to track the cooldowns
     private long lastFireTime = 0;
     private long lastMoveTime = 0;
+    private long lastSmokeTime = 0;
 
     public GameCanvas(Grid arena, DataOutputStream o, Ship myShip) {
         this.sharedArena = arena;
@@ -60,12 +61,25 @@ public class GameCanvas extends JComponent {
         im.put(KeyStroke.getKeyStroke("LEFT"), "L");
         im.put(KeyStroke.getKeyStroke("RIGHT"), "R");
         im.put(KeyStroke.getKeyStroke("SPACE"), "S");
+        im.put(KeyStroke.getKeyStroke("X"), "X"); // NEW
 
         am.put("U", new AbstractAction() { public void actionPerformed(ActionEvent e) { requestMove(-1, 0, controlledShip.isHorizontal()); }});
         am.put("D", new AbstractAction() { public void actionPerformed(ActionEvent e) { requestMove(1, 0, controlledShip.isHorizontal()); }});
         am.put("L", new AbstractAction() { public void actionPerformed(ActionEvent e) { requestMove(0, -1, controlledShip.isHorizontal()); }});
         am.put("R", new AbstractAction() { public void actionPerformed(ActionEvent e) { requestMove(0, 1, controlledShip.isHorizontal()); }});
         am.put("S", new AbstractAction() { public void actionPerformed(ActionEvent e) { requestMove(0, 0, !controlledShip.isHorizontal()); }});
+        am.put("X", new AbstractAction() { public void actionPerformed(ActionEvent e) { 
+            if (!gameActive) return;
+            long currentTime = System.currentTimeMillis();
+            // 15-second cooldown for Smoke Screen
+            if (currentTime - lastSmokeTime < 15000) return; 
+            try {
+                out.writeUTF("ABILITY:SMOKE:" + controlledShip.getName());
+                out.flush();
+                lastSmokeTime = currentTime;
+            } catch (IOException ex) {}
+        }
+    });
     }
 
     private void requestMove(int dR, int dC, boolean h) {
@@ -93,20 +107,41 @@ public class GameCanvas extends JComponent {
         Graphics2D g2d = (Graphics2D) g;
         
         g2d.setColor(Color.BLACK);
-        g2d.drawString("BATTLE ARENA", OFFSET_X, OFFSET_Y - 10);
+        g2d.drawString("BATTLE ARENA (Press 'X' for Smoke Screen)", OFFSET_X, OFFSET_Y - 10);
 
-        for (int r = 0; r < Grid.SIZE; r++) { // Changed from 10 to Grid.SIZE
-            for (int c = 0; c < Grid.SIZE; c++) { // Changed from 10 to Grid.SIZE
+        for (int r = 0; r < Grid.SIZE; r++) {
+            for (int c = 0; c < Grid.SIZE; c++) {
                 int s = sharedArena.getTileStatus(r, c);
-                
-                // Assign colors for every status
-                if (s == Grid.WATER) g2d.setColor(new Color(0, 119, 190));
-                else if (s == Grid.SHIP) g2d.setColor(Color.DARK_GRAY);
-                else if (s == Grid.MISS) g2d.setColor(Color.WHITE);
-                else if (s == Grid.HIT) g2d.setColor(Color.RED);
-                else if (s == Grid.ISLAND) g2d.setColor(new Color(34, 139, 34)); // Forest Green
-                else if (s == Grid.MINE) g2d.setColor(Color.ORANGE); // Warning Orange
-                
+
+                // --- NEW INVISIBILITY CHECK ---
+                boolean hideTile = false;
+                for (Ship ship : sharedArena.getShips()) {
+                    // If this is the ENEMY ship, and it is SMOKED, and it occupies this tile: HIDE IT
+                    if (!ship.getName().equals(controlledShip.getName()) && ship.isSmoked()) {
+                        if (ship.occupies(r, c)) {
+                            hideTile = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Apply colors based on visibility
+                if (hideTile) {
+                    g2d.setColor(new Color(0, 119, 190)); // Disguise as WATER
+                } else if (s == Grid.WATER) {
+                    g2d.setColor(new Color(0, 119, 190));
+                } else if (s == Grid.SHIP) {
+                    g2d.setColor(Color.DARK_GRAY);
+                } else if (s == Grid.MISS) {
+                    g2d.setColor(Color.WHITE);
+                } else if (s == Grid.HIT) {
+                    g2d.setColor(Color.RED);
+                } else if (s == Grid.ISLAND) {
+                    g2d.setColor(new Color(34, 139, 34));
+                } else if (s == Grid.MINE) {
+                    g2d.setColor(Color.ORANGE); 
+                }
+
                 int x = OFFSET_X + (c * TILE_SIZE);
                 int y = OFFSET_Y + (r * TILE_SIZE);
                 g2d.fillRect(x, y, TILE_SIZE, TILE_SIZE);
@@ -114,11 +149,23 @@ public class GameCanvas extends JComponent {
                 g2d.drawRect(x, y, TILE_SIZE, TILE_SIZE);
             }
         }
-        // Highlight your own ship
-        g2d.setColor(Color.GREEN);
+        
+        // Highlight your own ship (Make it Gray if YOU are smoked, Green if normal)
+        if (controlledShip.isSmoked()) {
+            g2d.setColor(Color.LIGHT_GRAY); 
+            g2d.setStroke(new BasicStroke(3)); // Thicker border to show it's active
+        } else {
+            g2d.setColor(Color.GREEN);
+            g2d.setStroke(new BasicStroke(1));
+        }
+
+        int shipWidth = controlledShip.isHorizontal() ? TILE_SIZE * controlledShip.getLength() : TILE_SIZE;
+        int shipHeight = controlledShip.isHorizontal() ? TILE_SIZE : TILE_SIZE * controlledShip.getLength();
+        
         g2d.drawRect(OFFSET_X + (controlledShip.getStartCol() * TILE_SIZE), 
                      OFFSET_Y + (controlledShip.getStartRow() * TILE_SIZE), 
-                     controlledShip.isHorizontal() ? TILE_SIZE * 3 : TILE_SIZE, 
-                     controlledShip.isHorizontal() ? TILE_SIZE : TILE_SIZE * 3);
+                     shipWidth, shipHeight);
+        
+        g2d.setStroke(new BasicStroke(1)); // Reset stroke for other drawings
     }
 }
