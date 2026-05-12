@@ -2,99 +2,85 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Grid {
-    public static final int SIZE = 10; 
-    
-    public static final int WATER = 0;
-    public static final int SHIP = 1;
-    public static final int MISS = 2;
-    public static final int HIT = 3;
 
-    private int[][] board; 
-    private List<Ship> ships;
+    public static final int SIZE = 15; // Increased from 10
+    public static final int WATER = 0, SHIP = 1, MISS = 2, HIT = 3;
+    public static final int ISLAND = 4, MINE = 5; // New terrain types
 
-    public Grid() {
-        board = new int[SIZE][SIZE];
-        ships = new ArrayList<>();
-        
-        for (int row = 0; row < SIZE; row++) {
-            for (int col = 0; col < SIZE; col++) {
-                board[row][col] = WATER;
-            }
-        }
+    private int[][] board = new int[SIZE][SIZE];
+    private List<Ship> ships = new ArrayList<>();
+
+    public int getTileStatus(int r, int c) { return board[r][c]; }
+    public void setTileStatus(int r, int c, int s) { if (r >= 0 && r < SIZE && c >= 0 && c < SIZE) board[r][c] = s; }
+    public List<Ship> getShips() { return ships; }
+
+    public Ship getShipByName(String name) {
+        for (Ship s : ships) if (s.getName().equals(name)) return s;
+        return null;
     }
 
-    public int getTileStatus(int row, int col) { return board[row][col]; }
-    public boolean hasShipAt(int row, int col) { return board[row][col] == SHIP; }
-    
-    // --> NEW METHOD to let the Canvas see all ships
-    public List<Ship> getShips() { return ships; } 
+    public boolean hasShipAt(int row, int col) {
+    // Check if the board at these coordinates is a SHIP (1) or a HIT (3)
+    return board[row][col] == SHIP || board[row][col] == HIT;
+    }
 
-    // --> NEW METHOD to erase the ship's old position when moving
     public void removeShipTrace(Ship ship) {
         for (int i = 0; i < ship.getLength(); i++) {
-            if (ship.isHorizontal()) {
-                board[ship.getStartRow()][ship.getStartCol() + i] = WATER;
-            } else {
-                board[ship.getStartRow() + i][ship.getStartCol()] = WATER;
-            }
+            int r = ship.isHorizontal() ? ship.getStartRow() : ship.getStartRow() + i;
+            int c = ship.isHorizontal() ? ship.getStartCol() + i : ship.getStartCol();
+            if (board[r][c] == SHIP || board[r][c] == HIT) board[r][c] = WATER;
         }
     }
 
-    // --> NEW METHOD to stamp the ship's new position after moving
     public void addShipTrace(Ship ship) {
         for (int i = 0; i < ship.getLength(); i++) {
-            if (ship.isHorizontal()) {
-                board[ship.getStartRow()][ship.getStartCol() + i] = SHIP;
-            } else {
-                board[ship.getStartRow() + i][ship.getStartCol()] = SHIP;
-            }
+            int r = ship.isHorizontal() ? ship.getStartRow() : ship.getStartRow() + i;
+            int c = ship.isHorizontal() ? ship.getStartCol() + i : ship.getStartCol();
+            // Draw damaged part if hit, otherwise draw healthy part
+            board[r][c] = ship.isSegmentHit(i) ? HIT : SHIP; 
         }
     }
 
-    public boolean isValidPlacement(Ship ship, int startRow, int startCol, boolean isHorizontal) {
-        if (isHorizontal) {
-            if (startCol + ship.getLength() > SIZE) return false; 
-            for (int i = 0; i < ship.getLength(); i++) {
-                if (board[startRow][startCol + i] != WATER) return false; 
-            }
-        } else {
-            if (startRow + ship.getLength() > SIZE) return false; 
-            for (int i = 0; i < ship.getLength(); i++) {
-                if (board[startRow + i][startCol] != WATER) return false; 
-            }
+    public boolean isValidPlacement(Ship ship, int r, int c, boolean h) {
+        for (int i = 0; i < ship.getLength(); i++) {
+            int checkR = h ? r : r + i;
+            int checkC = h ? c + i : c;
+            
+            // Check boundaries using SIZE
+            if (checkR < 0 || checkR >= SIZE || checkC < 0 || checkC >= SIZE) return false;
+            
+            int val = board[checkR][checkC];
+            // Block moving into other ships, hit debris, or Islands
+            if (val == SHIP || val == HIT || val == ISLAND) return false;
         }
         return true;
     }
 
-    public boolean placeShip(Ship ship, int startRow, int startCol, boolean isHorizontal) {
-        if (!isValidPlacement(ship, startRow, startCol, isHorizontal)) {
-            return false;
-        }
-        ship.setPlacement(startRow, startCol, isHorizontal);
-        ships.add(ship);
-        
-        // Use our new trace method to lock it into the grid
-        addShipTrace(ship); 
-        return true;
+    public void placeShip(Ship s, int r, int c, boolean h) {
+        if (s.getStartRow() != -1) removeShipTrace(s);
+        s.setPlacement(r, c, h);
+        if (!ships.contains(s)) ships.add(s);
+        addShipTrace(s);
     }
 
-    public int receiveAttack(int row, int col) {
-        if (row < 0 || row >= SIZE || col < 0 || col >= SIZE) return -1; 
-
-        if (board[row][col] == WATER) {
-            board[row][col] = MISS;
+    public int receiveAttack(int r, int c) {
+        if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return -1;
+        if (board[r][c] == WATER) {
+            board[r][c] = MISS;
             return MISS;
-        } else if (board[row][col] == SHIP) {
-            board[row][col] = HIT;
-            return HIT;
+        } else if (board[r][c] == SHIP) {
+            board[r][c] = HIT;
+            for (Ship s : ships) {
+                for (int i = 0; i < s.getLength(); i++) {
+                    int sr = s.isHorizontal() ? s.getStartRow() : s.getStartRow() + i;
+                    int sc = s.isHorizontal() ? s.getStartCol() + i : s.getStartCol();
+                    if (sr == r && sc == c) {
+                        s.takeHitAt(i);
+                        return HIT;
+                    }
+                }
+            }
         }
-        return board[row][col]; 
-    }
-
-    public boolean areAllShipsSunk() {
-        for (Ship ship : ships) {
-            if (!ship.isSunk()) return false;
-        }
-        return true;
+        return board[r][c];
     }
 }
