@@ -39,50 +39,65 @@ public class GameServer {
         } catch (IOException e) { e.printStackTrace(); }
     }
 
-    private void broadcast(String m) {
+    public void broadcast(String m) {
         for (ConnectionThread ct : connections) ct.sendMessage(m);
     }
 
-    private synchronized void handleFire(int r, int c) {
-        if (!gameRunning) return;
-        int outcome = sharedArena.receiveAttack(r, c);
-        String res = (outcome == Grid.HIT) ? "HIT" : "MISS";
-        broadcast("ATTACK_SYNC:" + r + ":" + c + ":" + res);
+    private void checkGameOver() {
+            if (p1Ship.isSunk()) {
+                broadcast("GAMEOVER:2"); // Player 2 wins
+                gameRunning = false;
+            } else if (p2Ship.isSunk()) {
+                broadcast("GAMEOVER:1"); // Player 1 wins
+                gameRunning = false;
+            }
+        }
 
-        if (p1Ship.isSunk()) { broadcast("GAMEOVER:2"); gameRunning = false; }
-        else if (p2Ship.isSunk()) { broadcast("GAMEOVER:1"); gameRunning = false; }
+    private synchronized void handleFire(int r, int c) {
+    if (!gameRunning) return;
+    int outcome = sharedArena.receiveAttack(r, c);
+    String res = (outcome == Grid.HIT) ? "HIT" : "MISS";
+    broadcast("ATTACK_SYNC:" + r + ":" + c + ":" + res);
+
+    // Simplified check
+    checkGameOver();
     }
 
     private synchronized void handleMove(String shipName, int r, int c, boolean h) {
-        if (!gameRunning) return;
-        Player p = sharedArena.getShipByName(shipName);
-        if (p != null) {
-            sharedArena.removeShipTrace(p);
-            if (sharedArena.isValidPlacement(p, r, c, h)) {
-                ArrayList<int[]> explodedMines = new ArrayList<>();
-                for (int i = 0; i < p.getLength(); i++) {
-                    int cr = h ? r : r + i;
-                    int cc = h ? c + i : c;
-                    if (sharedArena.getTileStatus(cr, cc) == Grid.MINE) explodedMines.add(new int[]{cr, cc});
-                }
-
-                for (int[] m : explodedMines) {
-                    sharedArena.setTileStatus(m[0], m[1], Grid.WATER);
-                    broadcast("TILE_SYNC:" + m[0] + ":" + m[1] + ":" + Grid.WATER);
-                }
-
-                sharedArena.placeShip(p, r, c, h);
-                broadcast("MOVE_SYNC:" + shipName + ":" + r + ":" + c + ":" + (h ? "H" : "V"));
-                
-                for (int[] m : explodedMines) {
-                    sharedArena.receiveAttack(m[0], m[1]);
-                    broadcast("ATTACK_SYNC:" + m[0] + ":" + m[1] + ":MINE_HIT");
-                }
-            } else {
-                sharedArena.addShipTrace(p);
+    if (!gameRunning) return;
+    Player p = sharedArena.getShipByName(shipName);
+    if (p != null) {
+        sharedArena.removeShipTrace(p);
+        if (sharedArena.isValidPlacement(p, r, c, h)) {
+            ArrayList<int[]> explodedMines = new ArrayList<>();
+            for (int i = 0; i < p.getLength(); i++) {
+                int cr = h ? r : r + i;
+                int cc = h ? c + i : c;
+                if (sharedArena.getTileStatus(cr, cc) == Grid.MINE) explodedMines.add(new int[]{cr, cc});
             }
+
+            for (int[] m : explodedMines) {
+                sharedArena.setTileStatus(m[0], m[1], Grid.WATER);
+                broadcast("TILE_SYNC:" + m[0] + ":" + m[1] + ":" + Grid.WATER);
+            }
+
+            sharedArena.placeShip(p, r, c, h);
+            broadcast("MOVE_SYNC:" + shipName + ":" + r + ":" + c + ":" + (h ? "H" : "V"));
+            
+            for (int[] m : explodedMines) {
+                sharedArena.receiveAttack(m[0], m[1]);
+                broadcast("ATTACK_SYNC:" + m[0] + ":" + m[1] + ":MINE_HIT");
+            }
+
+            // ADD THIS CHECK HERE
+            if (!explodedMines.isEmpty()) {
+                checkGameOver();
+            }
+        } else {
+            sharedArena.addShipTrace(p);
         }
     }
+}
 
     private synchronized void handleSmoke(String shipName) {
         broadcast("SMOKE_SYNC:" + shipName + ":ON");
@@ -164,12 +179,23 @@ public class GameServer {
                     } else if (p[0].equals("REQUEST_MOVE")) {
                         handleMove(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]), p[4].equals("H"));
                     } else if (p[0].equals("ABILITY")) {
-                        if (p[1].equals("SMOKE")) handleSmoke(p[2]);
-                        else if (p[1].equals("CLUSTER_BOMB")) handleClusterBomb();
+                        Ability selectedAbility = null;
+
+                        if (p[1].equals("SMOKE")) {
+                            selectedAbility = new SmokeAbility(p[2]); // p[2] is the ship name
+                        } else if (p[1].equals("CLUSTER_BOMB")) {
+                            selectedAbility = new ClusterAbility();
+                        }
+
+                        // This single line replaces all the old individual method calls
+                        if (selectedAbility != null) {
+                            selectedAbility.execute(sharedArena, GameServer.this); 
+                        }
                     }
                 }
             } catch (IOException e) {}
         }
+
     }
 
     public static void main(String[] args) { new GameServer().start(); }

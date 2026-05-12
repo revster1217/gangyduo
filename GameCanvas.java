@@ -30,7 +30,11 @@ public class GameCanvas extends JComponent {
     private static final int MINE_EXPLOSION_FRAMES = 10;
     private long lastSpecialTime = 0; // Cooldown for special ammo
   
-
+    /**
+     * Encapsulates the data and animation state for an explosion effect.
+     * It allows the canvas to track the frame progress for multiple concurrent visual effects.
+     */
+    
     private class Explosion {
         int row, col;
         int frame;
@@ -110,7 +114,7 @@ public class GameCanvas extends JComponent {
             public void mouseClicked(MouseEvent e) {
                 if (!gameActive) return;
                 long currentTime = System.currentTimeMillis();
-                if (currentTime - lastFireTime < 200) return; 
+                if (currentTime - lastFireTime < 50) return; 
 
                 int col = (e.getX() - (OFFSET_X + shakeX)) / TILE_SIZE;
                 int row = (e.getY() - (OFFSET_Y + shakeY)) / TILE_SIZE;
@@ -341,7 +345,7 @@ public class GameCanvas extends JComponent {
         if (!gameActive) return;
 
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastMoveTime < 1000) return; 
+        if (currentTime - lastMoveTime < 350) return; 
 
         int nR = controlledShip.getStartRow() + dR;
         int nC = controlledShip.getStartCol() + dC;

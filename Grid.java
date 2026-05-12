@@ -3,9 +3,9 @@ import java.util.List;
 
 public class Grid {
 
-    public static final int SIZE = 15; // Increased from 10
+    public static final int SIZE = 15;
     public static final int WATER = 0, SHIP = 1, MISS = 2, HIT = 3;
-    public static final int ISLAND = 4, MINE = 5; // New terrain types
+    public static final int ISLAND = 4, MINE = 5;
 
     private int[][] board = new int[SIZE][SIZE];
     private List<Player> ships = new ArrayList<>();
@@ -17,11 +17,6 @@ public class Grid {
     public Player getShipByName(String name) {
         for (Player s : ships) if (s.getName().equals(name)) return s;
         return null;
-    }
-
-    public boolean hasShipAt(int row, int col) {
-    // Check if the board at these coordinates is a SHIP (1) or a HIT (3)
-    return board[row][col] == SHIP || board[row][col] == HIT;
     }
 
     public void removeShipTrace(Player ship) {
@@ -64,23 +59,40 @@ public class Grid {
     }
 
     public int receiveAttack(int r, int c) {
-        if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return -1;
-        if (board[r][c] == WATER) {
-            board[r][c] = MISS;
-            return MISS;
-        } else if (board[r][c] == SHIP) {
-            board[r][c] = HIT;
-            for (Player s : ships) {
-                for (int i = 0; i < s.getLength(); i++) {
-                    int sr = s.isHorizontal() ? s.getStartRow() : s.getStartRow() + i;
-                    int sc = s.isHorizontal() ? s.getStartCol() + i : s.getStartCol();
-                    if (sr == r && sc == c) {
-                        s.takeHitAt(i);
-                        return HIT;
-                    }
+    if (isOutOfBounds(r, c)) return -1;
+
+    int currentStatus = board[r][c];
+    
+    if (currentStatus == WATER) {
+        board[r][c] = MISS;
+        return MISS;
+    } 
+    
+    if (currentStatus == SHIP) {
+        board[r][c] = HIT;
+        registerShipDamage(r, c);
+        return HIT;
+    }
+
+    return currentStatus;
+    }
+    private void registerShipDamage(int r, int c) {
+        for (Player s : getShips()) {
+            for (int i = 0; i < s.getLength(); i++) {
+                // Calculate coordinates for each segment of the ship
+                int sr = s.isHorizontal() ? s.getStartRow() : s.getStartRow() + i;
+                int sc = s.isHorizontal() ? s.getStartCol() + i : s.getStartCol();
+                
+                // If these coordinates match the attack, tell the ship it was hit
+                if (sr == r && sc == c) {
+                    s.takeHitAt(i);
+                    return; // Stop searching once the ship is found
                 }
             }
         }
-        return board[r][c];
+    }
+
+    private boolean isOutOfBounds(int r, int c) {
+        return r < 0 || r >= SIZE || c < 0 || c >= SIZE;
     }
 }
