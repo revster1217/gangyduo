@@ -52,39 +52,29 @@ public class GameServer {
             sharedArena.removeShipTrace(s); // Temporarily lift ship to check the path
             
             if (sharedArena.isValidPlacement(s, r, c, h)) {
-                // 1. Identify any mines in the ship's new path
-                ArrayList<int[]> explodedMines = new ArrayList<>();
+                // Check if any part of the ship landed on a mine
                 for (int i = 0; i < s.getLength(); i++) {
                     int checkR = h ? r : r + i;
                     int checkC = h ? c + i : c;
+
                     if (sharedArena.getTileStatus(checkR, checkC) == Grid.MINE) {
-                        explodedMines.add(new int[]{checkR, checkC});
+                        // Tell clients to play the mine explosion BEFORE the tile changes
+                        broadcast("MINE_SYNC:" + checkR + ":" + checkC);
+                        sharedArena.setTileStatus(checkR, checkC, Grid.WATER); // Remove the mine
+                        sharedArena.receiveAttack(checkR, checkC); // Deal damage to the ship segment
+                        broadcast("ATTACK_SYNC:" + checkR + ":" + checkC + ":HIT"); // Sync hit with clients
                     }
                 }
 
-                // 2. Clear the mines and update the clients BEFORE moving the ship
-                for (int[] mine : explodedMines) {
-                    sharedArena.setTileStatus(mine[0], mine[1], Grid.WATER);
-                    // Tell clients the mine is gone
-                    broadcast("TILE_SYNC:" + mine[0] + ":" + mine[1] + ":" + Grid.WATER);
-                }
-
-                // 3. Place the ship in its new position and sync movement
                 sharedArena.placeShip(s, r, c, h);
                 broadcast("MOVE_SYNC:" + shipName + ":" + r + ":" + c + ":" + (h ? "H" : "V"));
                 
-                // 4. Apply damage AFTER the ship is placed so it registers as a HIT
-                for (int[] mine : explodedMines) {
-                    sharedArena.receiveAttack(mine[0], mine[1]); // Damages the ship object
-                    broadcast("ATTACK_SYNC:" + mine[0] + ":" + mine[1] + ":HIT"); // Paints it red
-                }
-                
-                // 5. Check if the mine sunk the ship
+                // Check if the mine sunk the ship
                 if (p1Ship.isSunk()) { broadcast("GAMEOVER:2"); gameRunning = false; }
                 else if (p2Ship.isSunk()) { broadcast("GAMEOVER:1"); gameRunning = false; }
 
             } else {
-                sharedArena.addShipTrace(s); // Movement blocked, put it back
+                sharedArena.addShipTrace(s); // Movement blocked (Island/Ship), put it back
             }
         }
     }
@@ -117,22 +107,8 @@ public class GameServer {
         }
     }
 
-    private synchronized void handleSmoke(String shipName) {
-        if (!gameRunning) return;
-        
-        // Turn smoke ON for both clients
-        broadcast("SMOKE_SYNC:" + shipName + ":ON");
-        
-        // Start a background timer to turn it OFF after 5 seconds
-        new Thread(() -> {
-            try { Thread.sleep(5000); } catch (InterruptedException e) {}
-            broadcast("SMOKE_SYNC:" + shipName + ":OFF");
-        }).start();
-    }
-
     private class ConnectionThread extends Thread {
         private Socket s; private DataInputStream in; private DataOutputStream out; 
-        
         public ConnectionThread(Socket s, int pNum) {
             this.s = s;
             try { 
@@ -144,13 +120,11 @@ public class GameServer {
         
         @Override
         public void run() {
-            
             try {
                 while (true) {
                     String[] p = in.readUTF().split(":");
-                   if (p[0].equals("FIRE")) handleFire(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+                    if (p[0].equals("FIRE")) handleFire(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
                     else if (p[0].equals("REQUEST_MOVE")) handleMove(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]), p[4].equals("H"));
-                    else if (p[0].equals("ABILITY") && p[1].equals("SMOKE")) handleSmoke(p[2]); // NEW LINE
                 }
             } catch (IOException e) {}
         }

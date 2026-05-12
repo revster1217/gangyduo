@@ -44,4 +44,10 @@ public class GameFrame extends JFrame {
     public void showMessage(String m) { statusLabel.setText(m); }
     public int getPlayerNumber() { return playerNumber; }
     public void repaintCanvas() { canvas.repaint(); }
+
+    /** Tells the canvas to start a regular explosion animation at this tile. */
+    public void addExplosion(int row, int col) { canvas.addExplosion(row, col); }
+
+    /** Tells the canvas to start a mine explosion animation at this tile. */
+    public void addMineExplosion(int row, int col) { canvas.addMineExplosion(row, col); }
 }

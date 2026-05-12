@@ -68,14 +68,28 @@ public class NetworkThread extends Thread {
                 }
                 break;
 
+            case "MINE_SYNC":
+                // "MINE_SYNC:row:col" — a ship stepped on a mine, play big explosion
+                if (parts.length == 3) {
+                    int r = Integer.parseInt(parts[1]);
+                    int c = Integer.parseInt(parts[2]);
+                    SwingUtilities.invokeLater(() -> {
+                        gameFrame.addMineExplosion(r, c);
+                        gameFrame.repaintCanvas();
+                    });
+                }
+                break;
+
             case "ATTACK_SYNC":
                 // Server tells us a shot was fired: ATTACK_SYNC:row:col:HIT/MISS
                 if (parts.length == 4) {
                     int r = Integer.parseInt(parts[1]);
                     int c = Integer.parseInt(parts[2]);
-                    
+
                     SwingUtilities.invokeLater(() -> {
                         sharedArena.receiveAttack(r, c);
+                        // Trigger explosion animation at the fired tile
+                        gameFrame.addExplosion(r, c);
                         gameFrame.repaintCanvas();
                     });
                 }
@@ -107,22 +121,6 @@ public class NetworkThread extends Thread {
                     SwingUtilities.invokeLater(() -> {
                         sharedArena.setTileStatus(tr, tc, type);
                         gameFrame.repaintCanvas();
-                    });
-                }
-                break;
-
-                case "SMOKE_SYNC":
-                // Server tells us smoke status changed: SMOKE_SYNC:shipName:ON/OFF
-                if (parts.length == 3) {
-                    String shipName = parts[1];
-                    boolean isSmoked = parts[2].equals("ON");
-                    
-                    SwingUtilities.invokeLater(() -> {
-                        Ship s = sharedArena.getShipByName(shipName);
-                        if (s != null) {
-                            s.setSmoked(isSmoked);
-                            gameFrame.repaintCanvas();
-                        }
                     });
                 }
                 break;
